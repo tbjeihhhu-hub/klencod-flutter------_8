@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -19,6 +18,27 @@ const String imageKitUploadUrl =
     'https://upload.imagekit.io/api/v1/files/upload';
 
 final db = FirebaseFirestore.instance;
+
+const List<String> iraqProvinces = [
+  'بغداد',
+  'البصرة',
+  'نينوى',
+  'أربيل',
+  'السليمانية',
+  'دهوك',
+  'كركوك',
+  'ديالى',
+  'الأنبار',
+  'صلاح الدين',
+  'بابل',
+  'كربلاء',
+  'النجف',
+  'القادسية',
+  'المثنى',
+  'ذي قار',
+  'ميسان',
+  'واسط',
+];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -48,7 +68,6 @@ Future<String> uploadImageToImageKit(File file, User user) async {
     final error = authData is Map
         ? authData['error']?.toString() ?? 'فشل الحصول على توقيع الصور'
         : 'فشل الحصول على توقيع الصور';
-
     throw Exception(error);
   }
 
@@ -79,9 +98,7 @@ Future<String> uploadImageToImageKit(File file, User user) async {
   final streamedResponse = await request.send().timeout(
     const Duration(minutes: 2),
   );
-
   final response = await http.Response.fromStream(streamedResponse);
-
   final result = jsonDecode(response.body);
 
   if (response.statusCode != 200) {
@@ -90,7 +107,6 @@ Future<String> uploadImageToImageKit(File file, User user) async {
             result['help']?.toString() ??
             'فشل رفع الصورة'
         : 'فشل رفع الصورة';
-
     throw Exception(error);
   }
 
@@ -132,11 +148,9 @@ class AuthGate extends StatelessWidget {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-
         if (snapshot.hasData) {
           return HomePage(user: snapshot.data!);
         }
-
         return const AuthPage();
       },
     );
@@ -160,6 +174,7 @@ class _AuthPageState extends State<AuthPage> {
   bool isLogin = true;
   bool loading = false;
   bool hidePassword = true;
+  String selectedProvince = 'القادسية';
 
   @override
   void dispose() {
@@ -171,7 +186,6 @@ class _AuthPageState extends State<AuthPage> {
 
   Future<void> submit() async {
     if (!formKey.currentState!.validate()) return;
-
     setState(() => loading = true);
 
     try {
@@ -197,12 +211,14 @@ class _AuthPageState extends State<AuthPage> {
           'uid': credential.user!.uid,
           'name': name,
           'email': email,
+          'province': selectedProvince,
+          'محافظة': selectedProvince,
           'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       }
     } on FirebaseAuthException catch (e) {
       String message = 'حدث خطأ، حاول مرة ثانية';
-
       if (e.code == 'email-already-in-use') {
         message = 'هذا الإيميل مستخدم من قبل';
       } else if (e.code == 'invalid-email') {
@@ -216,7 +232,6 @@ class _AuthPageState extends State<AuthPage> {
       } else if (e.code == 'network-request-failed') {
         message = 'تأكد من اتصال الإنترنت';
       }
-
       showMessage(message);
     } catch (e) {
       showMessage('تعذر إكمال العملية: $e');
@@ -227,12 +242,10 @@ class _AuthPageState extends State<AuthPage> {
 
   Future<void> resetPassword() async {
     final email = emailController.text.trim();
-
     if (!email.contains('@')) {
       showMessage('اكتب إيميلك أولاً');
       return;
     }
-
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       showMessage('تم إرسال رابط استعادة كلمة المرور');
@@ -301,6 +314,25 @@ class _AuthPageState extends State<AuthPage> {
                             v == null || v.trim().length < 3
                                 ? 'اكتب اسمك بشكل صحيح'
                                 : null,
+                      ),
+                      const SizedBox(height: 15),
+                      DropdownButtonFormField<String>(
+                        value: selectedProvince,
+                        decoration: inputDecoration(
+                          'محافظتك',
+                          Icons.location_on_outlined,
+                        ),
+                        items: iraqProvinces.map((province) {
+                          return DropdownMenuItem(
+                            value: province,
+                            child: Text(province),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => selectedProvince = value);
+                          }
+                        },
                       ),
                       const SizedBox(height: 15),
                     ],
@@ -430,6 +462,7 @@ class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
   String selectedCategory = 'الكل';
   String searchText = '';
+  String buyerScope = 'local';
 
   final categories = [
     'الكل',
@@ -512,7 +545,6 @@ class _HomePageState extends State<HomePage> {
         builder: (_) => AddAdPage(user: widget.user),
       ),
     );
-
     if (result == true && mounted) {
       setState(() {});
       showMessage('تم نشر إعلانك بنجاح');
@@ -520,168 +552,240 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget homeContent() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(15),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [purple, Color(0xFF9B70F5)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'كلشي تريده بمكان واحد',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'بيع واشتري بكل سهولة من سوق ال حمادي',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    SizedBox(height: 10),
-                    Icon(Icons.storefront, color: Colors.white, size: 40),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                onChanged: (v) => setState(() => searchText = v.trim()),
-                decoration: InputDecoration(
-                  hintText: 'شنو تريد تدور عليه؟',
-                  prefixIcon: const Icon(Icons.search),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              SizedBox(
-                height: 42,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: categories.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final category = categories[i];
-                    final selected = selectedCategory == category;
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: db.collection('users').doc(widget.user.uid).snapshots(),
+      builder: (context, profileSnapshot) {
+        if (profileSnapshot.hasError) {
+          return const Center(child: Text('تعذر قراءة بيانات حسابك'));
+        }
+        if (profileSnapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-                    return ChoiceChip(
-                      label: Text(category),
-                      selected: selected,
-                      selectedColor: purple,
-                      labelStyle: TextStyle(
-                        color: selected ? Colors.white : Colors.black87,
-                      ),
-                      onSelected: (_) {
-                        setState(() => selectedCategory = category);
-                      },
-                    );
-                  },
-                ),
+        final profile = profileSnapshot.data?.data() ?? {};
+        final myProvince = (profile['province'] ??
+                profile['محافظة'] ??
+                profile['governorate'] ??
+                '')
+            .toString()
+            .trim();
+
+        if (myProvince.isEmpty) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Text(
+                'محافظة حسابك غير محفوظة. حدّث بيانات حسابك حتى تظهر الإعلانات حسب محافظتك.',
+                textAlign: TextAlign.center,
               ),
-            ],
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              'أحدث الإعلانات',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-          ),
-        ),
-        Expanded(
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: db
-                .collection('ads')
-                .orderBy('createdAt', descending: true)
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return const Center(
-                  child: Text('تعذر تحميل الإعلانات'),
-                );
-              }
+          );
+        }
 
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              final ads = snapshot.data!.docs.where((doc) {
-                final data = doc.data();
-                final category = data['category'] ?? '';
-                final title = (data['title'] ?? '').toString();
-
-                final categoryMatch = selectedCategory == 'الكل' ||
-                    category == selectedCategory;
-
-                final searchMatch = title
-                    .toLowerCase()
-                    .contains(searchText.toLowerCase());
-
-                return categoryMatch && searchMatch;
-              }).toList();
-
-              if (ads.isEmpty) {
-                return const Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.shopping_bag_outlined,
-                        size: 60,
-                        color: purple,
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(15),
+              child: Column(
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [purple, Color(0xFF9B70F5)],
                       ),
-                      SizedBox(height: 12),
-                      Text(
-                        'ماكو إعلانات حالياً',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'كلشي تريده بمكان واحد',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 23,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'بيع واشتري بكل سهولة من سوق ال حمادي',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        SizedBox(height: 10),
+                        Icon(Icons.storefront, color: Colors.white, size: 40),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    onChanged: (v) => setState(() => searchText = v.trim()),
+                    decoration: InputDecoration(
+                      hintText: 'شنو تريد تدور عليه؟',
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(15),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Text(
+                        'عرض الإعلانات:',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                              value: 'local',
+                              label: Text('محافظتي'),
+                              icon: Icon(Icons.location_on_outlined),
+                            ),
+                            ButtonSegment(
+                              value: 'all',
+                              label: Text('كل العراق'),
+                              icon: Icon(Icons.public),
+                            ),
+                          ],
+                          selected: {buyerScope},
+                          onSelectionChanged: (selection) {
+                            setState(() => buyerScope = selection.first);
+                          },
                         ),
                       ),
-                      Text('كن أول شخص ينشر إعلان بالسوق'),
                     ],
                   ),
-                );
-              }
-
-              return GridView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: ads.length,
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 0.68,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 42,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: categories.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final category = categories[i];
+                        final selected = selectedCategory == category;
+                        return ChoiceChip(
+                          label: Text(category),
+                          selected: selected,
+                          selectedColor: purple,
+                          labelStyle: TextStyle(
+                            color: selected ? Colors.white : Colors.black87,
+                          ),
+                          onSelected: (_) {
+                            setState(() => selectedCategory = category);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Text(
+                  buyerScope == 'local'
+                      ? 'أحدث الإعلانات في $myProvince'
+                      : 'إعلانات كل العراق المتاحة للجميع',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                itemBuilder: (context, index) {
-                  return AdCard(data: ads[index].data());
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: db
+                    .collection('ads')
+                    .where('status', isEqualTo: 'active')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(
+                      child: Text('تعذر تحميل الإعلانات'),
+                    );
+                  }
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  final ads = snapshot.data!.docs.where((doc) {
+                    final data = doc.data();
+                    final adProvince =
+                        (data['province'] ?? '').toString().trim();
+                    final reach = (data['reach'] ?? 'local').toString();
+                    final category = data['category'] ?? '';
+                    final title = (data['title'] ?? '').toString();
+
+                    final provinceMatch = buyerScope == 'local'
+                        ? adProvince == myProvince
+                        : (adProvince == myProvince || reach == 'all');
+
+                    final categoryMatch = selectedCategory == 'الكل' ||
+                        category == selectedCategory;
+                    final searchMatch = title
+                        .toLowerCase()
+                        .contains(searchText.toLowerCase());
+
+                    return provinceMatch && categoryMatch && searchMatch;
+                  }).toList();
+
+                  if (ads.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.shopping_bag_outlined,
+                            size: 60,
+                            color: purple,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'ماكو إعلانات حالياً',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text('جرّب تغيير القسم أو نطاق العرض'),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: ads.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      childAspectRatio: 0.68,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                    ),
+                    itemBuilder: (context, index) {
+                      return AdCard(data: ads[index].data());
+                    },
+                  );
                 },
-              );
-            },
-          ),
-        ),
-      ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -695,13 +799,11 @@ class _HomePageState extends State<HomePage> {
         if (snapshot.hasError) {
           return const Center(child: Text('تعذر تحميل إعلاناتك'));
         }
-
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
         final ads = snapshot.data!.docs;
-
         if (ads.isEmpty) {
           return const Center(
             child: Text('ما عندك إعلانات بعد، أضف أول إعلان إلك'),
@@ -724,42 +826,56 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget accountContent() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircleAvatar(
-              radius: 42,
-              backgroundColor: Color(0xFFE9E0FF),
-              child: Icon(Icons.person, size: 48, color: purple),
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: db.collection('users').doc(widget.user.uid).snapshots(),
+      builder: (context, snapshot) {
+        final profile = snapshot.data?.data() ?? {};
+        final province = (profile['province'] ??
+                profile['محافظة'] ??
+                profile['governorate'] ??
+                'غير محددة')
+            .toString();
+
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircleAvatar(
+                  radius: 42,
+                  backgroundColor: Color(0xFFE9E0FF),
+                  child: Icon(Icons.person, size: 48, color: purple),
+                ),
+                const SizedBox(height: 15),
+                Text(
+                  widget.user.displayName ?? 'مستخدم سوق ال حمادي',
+                  style: const TextStyle(
+                    fontSize: 21,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(widget.user.email ?? ''),
+                const SizedBox(height: 8),
+                Text('المحافظة: $province'),
+                const SizedBox(height: 25),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+                  },
+                  icon: const Icon(Icons.logout),
+                  label: const Text('تسجيل الخروج'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: purple,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 15),
-            Text(
-              widget.user.displayName ?? 'مستخدم سوق ال حمادي',
-              style: const TextStyle(
-                fontSize: 21,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(widget.user.email ?? ''),
-            const SizedBox(height: 25),
-            ElevatedButton.icon(
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-              },
-              icon: const Icon(Icons.logout),
-              label: const Text('تسجيل الخروج'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: purple,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -781,6 +897,7 @@ class AdCard extends StatelessWidget {
     final image = data['imageUrl']?.toString() ?? '';
     final title = data['title']?.toString() ?? '';
     final price = data['price']?.toString() ?? '0';
+    final province = data['province']?.toString() ?? '';
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -845,6 +962,14 @@ class AdCard extends StatelessWidget {
                       fontSize: 12,
                     ),
                   ),
+                  if (province.isNotEmpty)
+                    Text(
+                      province,
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 11,
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -864,7 +989,6 @@ class AdDetailsPage extends StatelessWidget {
   Future<void> contactSeller(BuildContext context) async {
     final phone = (data['phone'] ?? '').toString();
     final digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
-
     String number = digits;
 
     if (number.startsWith('00')) {
@@ -885,7 +1009,6 @@ class AdDetailsPage extends StatelessWidget {
     final message = Uri.encodeComponent(
       'السلام عليكم، شفت إعلانك بسوق ال حمادي، هل المنتج بعده متوفر؟',
     );
-
     final uri = Uri.parse('https://wa.me/$number?text=$message');
 
     try {
@@ -893,7 +1016,6 @@ class AdDetailsPage extends StatelessWidget {
         uri,
         mode: LaunchMode.externalApplication,
       );
-
       if (!opened && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('تعذر فتح واتساب')),
@@ -920,7 +1042,7 @@ class AdDetailsPage extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: Image.network(
-                data['imageUrl'] ?? '',
+                (data['imageUrl'] ?? '').toString(),
                 height: 260,
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
@@ -932,7 +1054,7 @@ class AdDetailsPage extends StatelessWidget {
             ),
             const SizedBox(height: 18),
             Text(
-              data['title'] ?? '',
+              (data['title'] ?? '').toString(),
               style: const TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
@@ -949,6 +1071,7 @@ class AdDetailsPage extends StatelessWidget {
             ),
             const SizedBox(height: 15),
             Text('القسم: ${data['category'] ?? ''}'),
+            Text('المحافظة: ${data['province'] ?? 'غير محددة'}'),
             const Divider(height: 30),
             const Text(
               'وصف المنتج',
@@ -1004,6 +1127,8 @@ class _AddAdPageState extends State<AddAdPage> {
 
   File? selectedImage;
   String category = 'أخرى';
+  String reach = 'local';
+  String? sellerProvince;
   bool loading = false;
 
   final categories = [
@@ -1015,6 +1140,31 @@ class _AddAdPageState extends State<AddAdPage> {
     'ملابس',
     'أخرى',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadSellerProvince();
+  }
+
+  Future<void> loadSellerProvince() async {
+    try {
+      final doc = await db.collection('users').doc(widget.user.uid).get();
+      final data = doc.data() ?? {};
+      final province = (data['province'] ??
+              data['محافظة'] ??
+              data['governorate'] ??
+              '')
+          .toString()
+          .trim();
+
+      if (mounted && province.isNotEmpty) {
+        setState(() => sellerProvince = province);
+      }
+    } catch (_) {
+      if (mounted) showMessage('تعذر قراءة محافظة حسابك');
+    }
+  }
 
   @override
   void dispose() {
@@ -1032,7 +1182,6 @@ class _AddAdPageState extends State<AddAdPage> {
         imageQuality: 75,
         maxWidth: 1400,
       );
-
       if (image != null && mounted) {
         setState(() => selectedImage = File(image.path));
       }
@@ -1052,15 +1201,31 @@ class _AddAdPageState extends State<AddAdPage> {
     setState(() => loading = true);
 
     try {
-      final adRef = db.collection('ads').doc();
+      final profile = await db
+          .collection('users')
+          .doc(widget.user.uid)
+          .get();
+      final profileData = profile.data() ?? {};
+      final province = (profileData['province'] ??
+              profileData['محافظة'] ??
+              profileData['governorate'] ??
+              '')
+          .toString()
+          .trim();
 
-      // رفع الصورة إلى ImageKit بدلاً من Firebase Storage
+      if (province.isEmpty) {
+        throw Exception(
+          'محافظة حسابك غير محفوظة. حدّث بيانات حسابك أولاً.',
+        );
+      }
+
       final imageUrl = await uploadImageToImageKit(
         selectedImage!,
         widget.user,
       );
 
-      // حفظ بيانات الإعلان ورابط الصورة في Firestore
+      final adRef = db.collection('ads').doc();
+
       await adRef.set({
         'id': adRef.id,
         'title': titleController.text.trim(),
@@ -1072,6 +1237,10 @@ class _AddAdPageState extends State<AddAdPage> {
         'sellerId': widget.user.uid,
         'sellerName': widget.user.displayName ?? 'بائع',
         'sellerEmail': widget.user.email ?? '',
+        'province': province,
+        'reach': reach,
+        'status': 'active',
+        'views': 0,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -1157,8 +1326,8 @@ class _AddAdPageState extends State<AddAdPage> {
                   if (v == null || v.trim().isEmpty) {
                     return 'اكتب السعر';
                   }
-                  if (double.tryParse(v.trim()) == null ||
-                      double.parse(v.trim()) <= 0) {
+                  final price = double.tryParse(v.trim());
+                  if (price == null || price <= 0) {
                     return 'اكتب سعراً صحيحاً';
                   }
                   return null;
@@ -1171,17 +1340,72 @@ class _AddAdPageState extends State<AddAdPage> {
                   'القسم',
                   Icons.category_outlined,
                 ),
-                items: categories
-                    .map((c) => DropdownMenuItem(
-                          value: c,
-                          child: Text(c),
-                        ))
-                    .toList(),
+                items: categories.map((c) {
+                  return DropdownMenuItem(
+                    value: c,
+                    child: Text(c),
+                  );
+                }).toList(),
                 onChanged: loading
                     ? null
                     : (v) {
                         if (v != null) setState(() => category = v);
                       },
+              ),
+              const SizedBox(height: 15),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on, color: purple),
+                    const SizedBox(width: 10),
+                    const Text('محافظة حسابك:'),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        sellerProvince ?? 'جاري تحميل المحافظة...',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: purple,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15),
+              DropdownButtonFormField<String>(
+                value: reach,
+                decoration: inputDecoration(
+                  'نطاق ظهور الإعلان',
+                  Icons.public,
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'local',
+                    child: Text('محافظتي فقط'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'all',
+                    child: Text('كل العراق'),
+                  ),
+                ],
+                onChanged: loading
+                    ? null
+                    : (v) {
+                        if (v != null) setState(() => reach = v);
+                      },
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'إعلان محافظتي يظهر داخل محافظتك فقط، أما إعلان كل العراق '
+                'فيظهر للمشترين بجميع المحافظات.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
               const SizedBox(height: 15),
               TextFormField(
