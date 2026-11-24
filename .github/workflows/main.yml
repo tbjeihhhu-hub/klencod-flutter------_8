@@ -75,10 +75,46 @@ jobs:
         run: flutter build appbundle --release
 
       - name: Verify AAB signature
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.TAJER_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.TAJER_KEY_ALIAS }}
         run: |
-          jarsigner -verify -certs build/app/outputs/bundle/release/app-release.aab > signature-check.txt 2>&1
-          cat signature-check.txt
-          grep -Fq "jar verified." signature-check.txt
+          set -e
+
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          KEYSTORE="android/app/upload-keystore.jks"
+
+          echo "Checking AAB signature..."
+          jarsigner -verify "$AAB" > /dev/null
+
+          echo "Reading AAB certificate..."
+          keytool -printcert -jarfile "$AAB" > aab-cert.txt
+
+          echo "Reading original keystore certificate..."
+          keytool -exportcert \
+            -keystore "$KEYSTORE" \
+            -storepass "$KEYSTORE_PASSWORD" \
+            -alias "$KEY_ALIAS" \
+            -file original-cert.der
+
+          keytool -printcert -file original-cert.der > original-cert.txt
+
+          AAB_FP=$(grep -m1 'SHA256:' aab-cert.txt | sed 's/.*SHA256: *//' | tr -d ': ')
+          KEY_FP=$(grep -m1 'SHA256:' original-cert.txt | sed 's/.*SHA256: *//' | tr -d ': ')
+
+          if [ -z "$AAB_FP" ] || [ -z "$KEY_FP" ]; then
+            echo "Could not read certificate fingerprints."
+            exit 1
+          fi
+
+          echo "Comparing certificate fingerprints..."
+
+          if [ "$AAB_FP" = "$KEY_FP" ]; then
+            echo "SUCCESS: AAB certificate matches the original keystore."
+          else
+            echo "ERROR: Certificate fingerprints do not match."
+            exit 1
+          fi
 
       - name: Upload AAB
         uses: actions/upload-artifact@v4
