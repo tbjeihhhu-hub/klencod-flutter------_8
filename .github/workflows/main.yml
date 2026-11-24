@@ -1,5 +1,5 @@
 
-name: Build Flutter AAB
+name: Build Flutter AAB and Signed APK
 
 on:
   workflow_dispatch:
@@ -37,6 +37,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.TAJER_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.TAJER_KEY_ALIAS }}
         run: |
+          set -e
           test -n "$KEYSTORE_BASE64"
           test -n "$KEYSTORE_PASSWORD"
           test -n "$KEY_PASSWORD"
@@ -74,21 +75,30 @@ jobs:
       - name: Build signed AAB
         run: flutter build appbundle --release
 
-      - name: Verify AAB signature
+      - name: Build signed APK
+        run: flutter build apk --release
+
+      - name: Verify AAB and APK signatures
         env:
           KEYSTORE_PASSWORD: ${{ secrets.TAJER_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.TAJER_KEY_ALIAS }}
         run: |
           set -e
 
-          AAB="build/app/outputs/bundle/release/app-release.aab"
           KEYSTORE="android/app/upload-keystore.jks"
+          AAB="build/app/outputs/bundle/release/app-release.aab"
+          APK="build/app/outputs/flutter-apk/app-release.apk"
 
           echo "Checking AAB signature..."
           jarsigner -verify "$AAB" > /dev/null
-
-          echo "Reading AAB certificate..."
           keytool -printcert -jarfile "$AAB" > aab-cert.txt
+          AAB_FP=$(grep -m1 'SHA256:' aab-cert.txt | sed 's/.*SHA256: *//' | tr -d ': ')
+
+          echo "Checking APK signature..."
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > apk-cert.txt
+          APK_FP=$(grep -m1 'Signer #1 certificate SHA-256 digest:' apk-cert.txt | sed 's/.*digest: *//' | tr -d ': ')
 
           echo "Reading original keystore certificate..."
           keytool -exportcert \
@@ -98,28 +108,31 @@ jobs:
             -file original-cert.der
 
           keytool -printcert -file original-cert.der > original-cert.txt
-
-          AAB_FP=$(grep -m1 'SHA256:' aab-cert.txt | sed 's/.*SHA256: *//' | tr -d ': ')
           KEY_FP=$(grep -m1 'SHA256:' original-cert.txt | sed 's/.*SHA256: *//' | tr -d ': ')
 
-          if [ -z "$AAB_FP" ] || [ -z "$KEY_FP" ]; then
-            echo "Could not read certificate fingerprints."
-            exit 1
-          fi
+          test -n "$AAB_FP"
+          test -n "$APK_FP"
+          test -n "$KEY_FP"
 
-          echo "Comparing certificate fingerprints..."
-
-          if [ "$AAB_FP" = "$KEY_FP" ]; then
-            echo "SUCCESS: AAB certificate matches the original keystore."
+          if [ "$AAB_FP" = "$KEY_FP" ] && [ "$APK_FP" = "$KEY_FP" ]; then
+            echo "SUCCESS: AAB and APK match the original signing key."
           else
-            echo "ERROR: Certificate fingerprints do not match."
+            echo "ERROR: Signing certificate mismatch."
             exit 1
           fi
 
-      - name: Upload AAB
+      - name: Upload signed AAB
         uses: actions/upload-artifact@v4
         with:
           name: TAJER-release-AAB
           path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TAJER-release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 30
